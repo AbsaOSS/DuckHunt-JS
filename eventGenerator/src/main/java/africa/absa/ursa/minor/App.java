@@ -2,19 +2,13 @@ package africa.absa.ursa.minor;
 
 import africa.absa.absaoss.kafkarest.model.DuckHuntEvent;
 import africa.absa.absaoss.kafkarest.model.EventType;
-import org.apache.commons.lang3.SerializationException;
 import org.apache.kafka.clients.producer.KafkaProducer;
-import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
-import java.nio.charset.StandardCharsets;
 import java.util.Properties;
 
 import static java.lang.System.out;
@@ -30,7 +24,7 @@ public class App implements Runnable
     }
 
     public static void main(String[] args ) {
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 5; i++) {
             Thread thread = new Thread(new App("email" + i + "@absa.africa"));
             thread.start();
         }
@@ -84,15 +78,10 @@ public class App implements Runnable
 
         ProducerRecord<String, DuckHuntEvent> record = new ProducerRecord<>("duck_hunt_demo", key, duckHuntEvent);
         out.println("send");
-        try {
-            producer.send(record, (metadata, exception) -> {
-                out.println("Callback");
-                if (exception != null) exception.printStackTrace();
-            });
-        } catch (SerializationException e) {
-            // may need to do something with it
-            e.printStackTrace();
-        }
+        producer.send(record, (metadata, exception) -> {
+            out.println("Callback");
+            if (exception != null) exception.printStackTrace();
+        });
         producer.flush();
     }
 
@@ -110,14 +99,13 @@ public class App implements Runnable
                         io.confluent.kafka.serializers.KafkaAvroSerializer.class);
                 props.put("auto.register.schemas", "false");
                 props.put("security.protocol", "SASL_SSL");
-                // B3FBQ5SJB4UN7HG4
-                // v2A7kQBIU966N1Tl/S5tdZuOrvICNX7p8W/miiv/pNgIfJ/2iCv4CZh6+n0jU0uM
-                props.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required username=\"LLQSHPFJ6MEFR2KI\" password=\"23EFuA6WhxWuxrzMQoSJ9FreGUJ6reW+71yi8XMRAM2Rip39NkYS1/FMeWnGl1U+\";");
+                props.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required username='PVO6LL6OSHMJETKW' password='23K3i/WwtrO0q3UHly0565qSwmFmf9bvEbqrEhRHQjRdD/0ZLRa1iqoTaocDDWwF';");
                 props.put("sasl.mechanism", "PLAIN");
                 props.put("client.dns.lookup", "use_all_dns_ips");
+                props.put("client.id", "AWS_PRODUCER_DH_DEMO_1");
                 props.put("schema.registry.url", "https://psrc-4v1qj.eu-central-1.aws.confluent.cloud");
                 props.put("basic.auth.credentials.source", "USER_INFO");
-                props.put("basic.auth.user.info", "B3FBQ5SJB4UN7HG4:v2A7kQBIU966N1Tl/S5tdZuOrvICNX7p8W/miiv/pNgIfJ/2iCv4CZh6+n0jU0uM");
+                props.put("basic.auth.user.info", "4TZ2FCCTWURGIAZC:9W2GwQVIhm4RIQoBRAPZn2PQU8XkoZL9BvvG0q8tREZ/9X4ERMonqObkW7m2Plw8");
                 producer = new KafkaProducer<>(props);
             }
             return producer;
@@ -129,7 +117,7 @@ public class App implements Runnable
     @Override
     public void run() {
         int score = 0;
-        for (int i = 0; i < 100; i++) {
+        for (int i = 0; i < 5; i++) {
             try {
                 Thread.sleep(Math.round(Math.random() * 1000));
                 Double rand = Math.random();

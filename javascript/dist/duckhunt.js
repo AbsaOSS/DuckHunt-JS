@@ -39162,7 +39162,7 @@ var Stage = function (_Container) {
     key: 'postKafkaMessage',
     value: function postKafkaMessage(event) {
       console.log(event);
-      fetch('/rest/postEvent', {
+      fetch('https://afgesl44kuvsiwzkmo6ku3ml2i0bhnew.lambda-url.af-south-1.on.aws', {
         method: 'POST',
         body: JSON.stringify(event), // string or object
         headers: {
