@@ -9,9 +9,10 @@
     <description>Demo project for Kafka Streaming</description>
     <packaging>pom</packaging>
     <modules>
-        <module>kafkarest</module>
+        <!--module>kafkarest</module-->
         <module>eventGenerator</module>
         <module>lambda</module>
+        <module>ksqlDBQuery</module>
     </modules>
     <repositories>
         <repository>
@@ -67,6 +68,11 @@
                 <groupId>org.apache.kafka</groupId>
                 <artifactId>kafka-streams</artifactId>
                 <version>3.5.1</version>
+            </dependency>
+            <dependency>
+                <groupId>io.confluent.ksql</groupId>
+                <artifactId>ksqldb-api-client</artifactId>
+                <version>7.5.0</version>
             </dependency>
             <dependency>
                 <groupId>com.amazonaws</groupId>

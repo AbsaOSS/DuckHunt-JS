@@ -10,16 +10,17 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import java.io.*;
-import java.net.HttpURLConnection;
-import java.net.URL;
-import java.nio.charset.StandardCharsets;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class Handler implements RequestHandler<Map<String,Object>, String> {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
+
     @Override
     public String handleRequest(Map<String, Object> event, Context context) {
         var logger = context.getLogger();
@@ -28,25 +29,30 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
             logger.log("No Body");
             return "Failed - No Body";
         }
+        AtomicReference<String> result = new AtomicReference<>("Not Done");
         try {
             DuckHuntEvent duckHuntEvent = objectMapper.readValue(body, DuckHuntEvent.class);
             logger.log(duckHuntEvent.toString());
-            KafkaProducer<String, DuckHuntEvent> producer = getProducer(logger);
+            KafkaProducer<String, String> producer = getProducer(logger);
             String key = duckHuntEvent.getEmail().toString();
 
-            ProducerRecord<String, DuckHuntEvent> record = new ProducerRecord<>("duck_hunt_demo", key, duckHuntEvent);
+            ProducerRecord<String, String> record = new ProducerRecord<>("duck_hunt_demo", key, duckHuntEvent.toString());
             try {
                 logger.log("Sending");
-                //THis fails
                 producer.send(record, (metadata, exception) -> {
                     if (exception != null) {
                         logger.log("Callback exception : " + exception.getMessage());
                         logger.log(convertStackTrace(exception));
+                        result.set("Failed");
                     }
-                    else logger.log("Callback: " + metadata.offset());
+                    else {
+                        logger.log("Callback: " + metadata.offset());
+                        result.set("Success");
+                    }
                 });
-                // This works
-                //postMessage(duckHuntEvent.getEmail().toString(), duckHuntEvent.getEventType().toString(), duckHuntEvent.getEventSize(), logger);
+                while (result.get().equals("Not Done")) {
+                    Thread.sleep(10);
+                }
             } catch (Exception exception) {
                 // may need to do something with it
                 logger.log("Sending exception" + exception.getMessage());
@@ -58,7 +64,7 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
             logger.log(e.getMessage());
             return "Failed - Body not a duckhunt";
         }
-        return "Success";
+        return result.get();
     }
     private static String convertStackTrace(Throwable throwable) {
         try (StringWriter sw = new StringWriter();
@@ -73,8 +79,8 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
             throw new IllegalStateException(ioe);
         }
     }
-    private KafkaProducer<String, DuckHuntEvent> producer = null;
-    private KafkaProducer<String, DuckHuntEvent> getProducer(LambdaLogger logger) {
+    private KafkaProducer<String, String> producer = null;
+    private KafkaProducer<String, String> getProducer(LambdaLogger logger) {
         if (producer != null) return producer;
         synchronized (this) {
             if (producer == null) {
@@ -84,7 +90,7 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
                 props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG,
                         org.apache.kafka.common.serialization.StringSerializer.class);
                 props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,
-                        io.confluent.kafka.serializers.KafkaAvroSerializer.class);
+                        org.apache.kafka.common.serialization.StringSerializer.class);
                 props.put("auto.register.schemas", "false");
                 props.put("security.protocol", "SASL_SSL");
                 props.put("sasl.jaas.config", "org.apache.kafka.common.security.plain.PlainLoginModule required username='PVO6LL6OSHMJETKW' password='23K3i/WwtrO0q3UHly0565qSwmFmf9bvEbqrEhRHQjRdD/0ZLRa1iqoTaocDDWwF';");
@@ -98,49 +104,5 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
             }
             return producer;
         }
-    }
-
-
-    private static void postMessage(String email, String eventType, int eventSize, LambdaLogger logger) throws IOException {
-        HttpURLConnection con = getHttpURLConnection();
-        String jsonInputString = "{\n" +
-                "    \"key\": {\n" +
-                "        \"type\": \"STRING\",\n" +
-                "        \"data\": \"" + email + "\"\n" +
-                "    },\n" +
-                "    \"value\": {\n" +
-                "        \"type\": \"JSON\",\n" +
-                "        \"data\": {\n" +
-                "            \"email\": \"" + email + "\",\n" +
-                "            \"eventType\": \"" + eventType + "\",\n" +
-                "            \"eventSize\": " + eventSize + "\n" +
-                "        }\n" +
-                "    }\n" +
-                "}";
-        try(OutputStream os = con.getOutputStream()) {
-            byte[] input = jsonInputString.getBytes(StandardCharsets.UTF_8);
-            os.write(input, 0, input.length);
-        }
-        try(BufferedReader br = new BufferedReader(
-                new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
-            StringBuilder response = new StringBuilder();
-            logger.log("Response Code: " + con.getResponseCode());
-            logger.log("Response Message: " + con.getResponseMessage());
-            String responseLine;
-            while ((responseLine = br.readLine()) != null) {
-                response.append(responseLine.trim());
-            }
-            logger.log(response.toString());
-        }
-    }
-
-    private static HttpURLConnection getHttpURLConnection() throws IOException {
-        URL url = new URL("https://pkc-q283m.af-south-1.aws.confluent.cloud/kafka/v3/clusters/lkc-zmowrd/topics/duck_hunt_demo/records");
-        HttpURLConnection con = (HttpURLConnection) url.openConnection();
-        con.setRequestMethod("POST");
-        con.setRequestProperty("Content-Type", "application/json");
-        con.setRequestProperty("Authorization", "Basic TExRU0hQRko2TUVGUjJLSToyM0VGdUE2V2h4V3V4cnpNUW9TSjlGcmVHVUo2cmVXKzcxeWk4WE1SQU0yUmlwMzlOa1lTMS9GTWVXbkdsMVUr");
-        con.setDoOutput(true);
-        return con;
     }
 }
