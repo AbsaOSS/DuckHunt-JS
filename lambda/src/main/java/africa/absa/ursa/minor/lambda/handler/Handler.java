@@ -10,9 +10,12 @@ import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.clients.producer.ProducerRecord;
 
-import java.io.IOException;
-import java.io.PrintWriter;
-import java.io.StringWriter;
+import java.io.*;
+import java.net.HttpURLConnection;
+import java.net.MalformedURLException;
+import java.net.ProtocolException;
+import java.net.URL;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.Properties;
 import java.util.concurrent.atomic.AtomicReference;
@@ -24,48 +27,109 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
     @Override
     public String handleRequest(Map<String, Object> event, Context context) {
         var logger = context.getLogger();
+        event.forEach((k, v) -> {
+            logger.log(k + " : " + v.toString());
+        });
         String body = (String) event.get("body");
         if (body == null) {
-            logger.log("No Body");
-            return "Failed - No Body";
-        }
-        AtomicReference<String> result = new AtomicReference<>("Not Done");
-        try {
-            DuckHuntEvent duckHuntEvent = objectMapper.readValue(body, DuckHuntEvent.class);
-            logger.log(duckHuntEvent.toString());
-            KafkaProducer<String, String> producer = getProducer(logger);
-            String key = duckHuntEvent.getEmail().toString();
-
-            ProducerRecord<String, String> record = new ProducerRecord<>("duck_hunt_demo", key, duckHuntEvent.toString());
-            try {
-                logger.log("Sending");
-                producer.send(record, (metadata, exception) -> {
-                    if (exception != null) {
-                        logger.log("Callback exception : " + exception.getMessage());
-                        logger.log(convertStackTrace(exception));
-                        result.set("Failed");
+            String rawPath = (String) event.get("rawPath");
+            if (rawPath == null || rawPath.isEmpty()) {
+                logger.log("No Body or Path");
+                return "Failed - No Body or Path";
+            } else {
+                switch(rawPath) {
+                    case "/ksql" : {
+                        Map<String, Object> queryStringParameters = (Map<String, Object>) event.get("queryStringParameters");
+                        queryStringParameters.forEach((k, v) -> {
+                            logger.log(k + " : " + v.toString());
+                        });
+                        String query = (String) queryStringParameters.get("query");
+                        if (!query.endsWith(";")) query += ";";
+                        if (query == null || query.isEmpty()) return "No KSQL Query";
+                        try {
+                            return postKSQLQuery(query);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
                     }
-                    else {
-                        logger.log("Callback: " + metadata.offset());
-                        result.set("Success");
-                    }
-                });
-                while (result.get().equals("Not Done")) {
-                    Thread.sleep(10);
+                    default: return "unsupported : " + rawPath;
                 }
-            } catch (Exception exception) {
-                // may need to do something with it
-                logger.log("Sending exception" + exception.getMessage());
-                logger.log(convertStackTrace(exception));
             }
-            producer.flush();
-        } catch (JsonProcessingException e) {
-            logger.log("Body not a duckhunt");
-            logger.log(e.getMessage());
-            return "Failed - Body not a duckhunt";
+        } else {
+            AtomicReference<String> result = new AtomicReference<>("Not Done");
+            try {
+                DuckHuntEvent duckHuntEvent = objectMapper.readValue(body, DuckHuntEvent.class);
+                logger.log(duckHuntEvent.toString());
+                KafkaProducer<String, String> producer = getProducer(logger);
+                String key = duckHuntEvent.getEmail().toString();
+
+                ProducerRecord<String, String> record = new ProducerRecord<>("duck_hunt_demo", key, duckHuntEvent.toString());
+                try {
+                    logger.log("Sending");
+                    producer.send(record, (metadata, exception) -> {
+                        if (exception != null) {
+                            logger.log("Callback exception : " + exception.getMessage());
+                            logger.log(convertStackTrace(exception));
+                            result.set("Failed");
+                        } else {
+                            logger.log("Callback: " + metadata.offset());
+                            result.set("Success");
+                        }
+                    });
+                    while (result.get().equals("Not Done")) {
+                        Thread.sleep(10);
+                    }
+                } catch (Exception exception) {
+                    // may need to do something with it
+                    logger.log("Sending exception" + exception.getMessage());
+                    logger.log(convertStackTrace(exception));
+                }
+                producer.flush();
+            } catch (JsonProcessingException e) {
+                logger.log("Body not a duckhunt");
+                logger.log(e.getMessage());
+                return "Failed - Body not a duckhunt";
+            }
+            return result.get();
         }
-        return result.get();
     }
+
+    private String postKSQLQuery(String query) throws IOException {
+        URL url = new URL("https://pksqlc-71x0j.af-south-1.aws.confluent.cloud/query");
+        HttpURLConnection con = getHttpURLConnection(query, url);
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
+            StringBuilder response = new StringBuilder();
+            String responseLine;
+            while ((responseLine = br.readLine()) != null) {
+                response.append(responseLine.trim());
+            }
+            return response.toString();
+        }
+    }
+
+    private static HttpURLConnection getHttpURLConnection(String query, URL url) throws IOException {
+        HttpURLConnection con = (HttpURLConnection) url.openConnection();
+        String basicAuth = "Basic S0VUS09PV01ZRUw2WVA1STo4Wkh0bnVUdkwwc3hWRTl4WmVRRnpBTHRhTDM4QmgzSk1xbS8xRzliTWxpWFJTNGcrc1lUaXZiY1I1THRUS21j";
+        con.setRequestProperty("Authorization", basicAuth);
+        con.setRequestProperty("Content-Type", "application/json");
+        con.setRequestMethod("POST");
+        con.setDoOutput(true);
+        String requestJson = String.format("""
+{
+  "ksql": "%s",
+  "streamsProperties": {
+      "auto.offset.reset" : "earliest"
+  }
+}
+""", query);
+        try (OutputStream os = con.getOutputStream()) {
+            byte[] input = requestJson.getBytes(StandardCharsets.UTF_8);
+            os.write(input, 0, input.length);
+        }
+        return con;
+    }
+
     private static String convertStackTrace(Throwable throwable) {
         try (StringWriter sw = new StringWriter();
              PrintWriter pw = new PrintWriter(sw)) {

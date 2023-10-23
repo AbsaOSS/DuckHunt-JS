@@ -70,7 +70,7 @@ public class App implements Runnable
         running = true;
         //new Thread(new QueueHandler()).start();
         List<Thread> threads = new ArrayList<>();
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 50; i++) {
             Thread thread = new Thread(new App("email" + i + "@absa.africa"));
             thread.start();
             threads.add(thread);
@@ -184,7 +184,7 @@ public class App implements Runnable
         int score = 0;
         int messages = 0;
         out.println("Started: " + email);
-        for (int i = 0; i < 10; i++) {
+        for (int i = 0; i < 100; i++) {
             try {
                 Thread.sleep(Math.round(Math.random() * 1000));
                 Double rand = Math.random();
