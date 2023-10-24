@@ -97,13 +97,26 @@ public class Handler implements RequestHandler<Map<String,Object>, String> {
     private String postKSQLQuery(String query) throws IOException {
         URL url = new URL("https://pksqlc-71x0j.af-south-1.aws.confluent.cloud/query");
         HttpURLConnection con = getHttpURLConnection(query, url);
+        boolean firstLine = true;
+        String delimiter = "";
         try (BufferedReader br = new BufferedReader(
                 new InputStreamReader(con.getInputStream(), StandardCharsets.UTF_8))) {
             StringBuilder response = new StringBuilder();
             String responseLine;
             while ((responseLine = br.readLine()) != null) {
-                response.append(responseLine.trim());
+                if (firstLine) {
+                    response.append("{\"query\": ");
+                    response.append(responseLine.trim());
+                    response.append(", \"results\": [");
+                    firstLine = false;
+                } else {
+                    response.append(delimiter);
+                    response.append(responseLine.trim());
+                    delimiter = ", ";
+                }
+
             }
+            response.append("]}");
             return response.toString();
         }
     }

@@ -33,37 +33,6 @@ public class App implements Runnable
     }
 
     private static ConcurrentLinkedQueue<DuckHuntEvent> queue = new ConcurrentLinkedQueue<>();
-    private static class QueueHandler implements Runnable {
-
-        @Override
-        public void run() {
-            int sent = 0;
-            out.println("Queue Handler");
-            while(running || !queue.isEmpty()) {
-                if (queue.isEmpty()) {
-                    try {
-                        out.println("Queue empty");
-                        Thread.sleep(1000);
-                    } catch (InterruptedException e) {
-                        throw new RuntimeException(e);
-                    }
-                } else {
-                    List<DuckHuntEvent> duckHuntEvents = new ArrayList<>();
-                    while(!queue.isEmpty() && duckHuntEvents.size() < 100) {
-                        duckHuntEvents.add(queue.remove());
-                    }
-                    out.println("Sending: " + duckHuntEvents.size());
-                    try {
-                        postMessage(duckHuntEvents);
-                        sent+= duckHuntEvents.size();
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
-                }
-            }
-            out.println("QueueHandler done: " + sent);
-        }
-    }
 
     private static boolean running = true;
     public static void main(String[] args ) throws IOException, InterruptedException {
@@ -86,27 +55,17 @@ public class App implements Runnable
         }
     }
 
-    private static void postMessage(List<DuckHuntEvent> duckHuntEvents) throws IOException {
+    private static void postMessage(DuckHuntEvent duckHuntEvent) throws IOException {
         HttpURLConnection con = getHttpURLConnection();
-        StringBuilder requestJson = new StringBuilder();
-        duckHuntEvents.forEach((duckHuntEvent -> {
-            requestJson.append("{\n" +
-                    "    \"key\": {\n" +
-                    "        \"type\": \"STRING\",\n" +
-                    "        \"data\": \"" + duckHuntEvent.getEmail() + "\"\n" +
-                    "    },\n" +
-                    "    \"value\": {\n" +
-                    "        \"type\": \"JSON\",\n" +
-                    "        \"data\": {\n" +
-                    "            \"email\": \"" + duckHuntEvent.getEmail() + "\",\n" +
-                    "            \"eventType\": \"" + duckHuntEvent.getEventType().toString() + "\",\n" +
-                    "            \"eventSize\": " + duckHuntEvent.getEventSize() + "\n" +
-                    "        }\n" +
-                    "    }\n" +
-                    "}\n");
-        }));
+        String requestJson = String.format("""
+{
+    "email": "%s",
+    "eventType": "%s",
+    "eventSize": %d
+}        
+""", duckHuntEvent.getEmail(), duckHuntEvent.getEventType(), duckHuntEvent.getEventSize());
         try (OutputStream os = con.getOutputStream()) {
-            byte[] input = requestJson.toString().getBytes(StandardCharsets.UTF_8);
+            byte[] input = requestJson.getBytes(StandardCharsets.UTF_8);
             os.write(input, 0, input.length);
         }
         try (BufferedReader br = new BufferedReader(
@@ -120,11 +79,11 @@ public class App implements Runnable
     }
 
     private static HttpURLConnection getHttpURLConnection() throws IOException {
-        URL url = new URL("https://pkc-q283m.af-south-1.aws.confluent.cloud/kafka/v3/clusters/lkc-zmowrd/topics/duck_hunt_demo/records");
+        URL url = new URL("https://afgesl44kuvsiwzkmo6ku3ml2i0bhnew.lambda-url.af-south-1.on.aws");
         HttpURLConnection con = (HttpURLConnection) url.openConnection();
         con.setRequestMethod("POST");
         con.setRequestProperty("Content-Type", "application/json");
-        con.setRequestProperty("Authorization", "Basic TExRU0hQRko2TUVGUjJLSToyM0VGdUE2V2h4V3V4cnpNUW9TSjlGcmVHVUo2cmVXKzcxeWk4WE1SQU0yUmlwMzlOa1lTMS9GTWVXbkdsMVUr");
+        //con.setRequestProperty("Authorization", "Basic TExRU0hQRko2TUVGUjJLSToyM0VGdUE2V2h4V3V4cnpNUW9TSjlGcmVHVUo2cmVXKzcxeWk4WE1SQU0yUmlwMzlOa1lTMS9GTWVXbkdsMVUr");
         con.setDoOutput(true);
         return con;
     }
@@ -194,20 +153,20 @@ public class App implements Runnable
                         .setEventSize(1)
                         .setEventType(EventType.SHOT)
                         .build();
-                writeTopic(value);
+                postMessage(value);
                 value = DuckHuntEvent.newBuilder()
                         .setEmail(email)
                         .setEventSize(hit)
                         .setEventType(EventType.HIT)
                         .build();
-                writeTopic(value);
+                postMessage(value);
                 score += 100 * hit;
                 value = DuckHuntEvent.newBuilder()
                         .setEmail(email)
                         .setEventSize(score)
                         .setEventType(EventType.SCORE)
                         .build();
-                writeTopic(value);
+                postMessage(value);
                 messages += 3;
             } catch (Exception e) {
                 throw new RuntimeException(e);

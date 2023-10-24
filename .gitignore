@@ -1,2 +1,6 @@
 node_modules
 .terraform
+/lambda/target/
+/eventGenerator/target/
+/ksqlDBQuery/target/
+/.idea/
