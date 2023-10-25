@@ -15,24 +15,24 @@ export class AppComponent implements OnInit, OnDestroy {
   everySecond: Observable<number> = timer(0, 5000);
   settings: AppSettings
   constructor(
-    @Inject(APP_SETTINGS) settings: AppSettings, 
+    @Inject(APP_SETTINGS) settings: AppSettings,
     private http: HttpClient
-    ) { 
-      this.settings = settings
-    }
+  ) {
+    this.settings = settings
+  }
 
   ngOnInit(): void {
     console.info("gnOnInit")
+    this.getData()
     this.subscription = this.everySecond.subscribe((seconds) => {
       console.info("in subscription")
       this.getData()
-      })
+    })
   }
 
   getData() {
     console.info(this.settings.apiBaseUrl)
-    /*
-    this.http.get<QueryResult>('https://afgesl44kuvsiwzkmo6ku3ml2i0bhnew.lambda-url.af-south-1.on.aws/ksql?query=select%20*%20from%20SCORES_TABLE_SUMMARY')
+    this.http.get<QueryResult>(this.settings.apiBaseUrl)
       .subscribe(data => {
         console.info(data)
         let scores = []
@@ -44,7 +44,6 @@ export class AppComponent implements OnInit, OnDestroy {
         this.scores = scores.sort(this.compareScore) //.slice(0, 10)
         console.info(this.scores)
       });
-      */
   }
 
   compareScore(a: Score, b: Score): number {

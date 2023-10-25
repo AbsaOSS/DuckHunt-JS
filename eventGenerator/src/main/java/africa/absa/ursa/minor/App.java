@@ -40,7 +40,7 @@ public class App implements Runnable
         //new Thread(new QueueHandler()).start();
         List<Thread> threads = new ArrayList<>();
         for (int i = 0; i < 50; i++) {
-            Thread thread = new Thread(new App("email" + i + "@absa.africa"));
+            Thread thread = new Thread(new App("User Name " + i));
             thread.start();
             threads.add(thread);
         }
